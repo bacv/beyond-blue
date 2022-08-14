@@ -1,0 +1,9 @@
+[workspace]
+
+members = [
+	"bevy-ui",
+	"peer",
+	"relay",
+]
+
+resolver = "2"
