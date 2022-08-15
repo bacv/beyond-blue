@@ -10,7 +10,8 @@ use libp2p::core::transport::OrTransport;
 use libp2p::core::upgrade;
 use libp2p::dns::DnsConfig;
 use libp2p::gossipsub::{
-    GossipsubMessage, IdentTopic as Topic, MessageAuthenticity, MessageId, ValidationMode,
+    GossipsubEvent, GossipsubMessage, IdentTopic as Topic, MessageAuthenticity, MessageId,
+    ValidationMode,
 };
 use libp2p::identify::{Identify, IdentifyConfig, IdentifyEvent, IdentifyInfo};
 use libp2p::noise;
@@ -249,6 +250,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         info!("{:?}", event)
                     }
                     SwarmEvent::Behaviour(Event::Ping(_)) => {}
+                    SwarmEvent::Behaviour(Event::Gossipsub(GossipsubEvent::Message {
+                        propagation_source: peer_id,
+                        message_id: id,
+                        message,
+                    })) => println!(
+                        "Got message: {} with id: {} from peer: {:?}",
+                        String::from_utf8_lossy(&message.data),
+                        id,
+                        peer_id
+                    ),
                     SwarmEvent::ConnectionEstablished {
                         peer_id, endpoint, ..
                     } => {
