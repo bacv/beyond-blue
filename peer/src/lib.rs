@@ -1,3 +1,9 @@
+mod behaviour;
+mod peerid;
+
+pub use behaviour::*;
+pub use peerid::*;
+
 #[cfg(test)]
 mod tests {
     #[test]
