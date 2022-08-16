@@ -1,15 +1,20 @@
 use std::net::Ipv4Addr;
 
-use async_std::io::{self, Lines, Stdin};
-use futures::stream::Fuse;
 use futures::{select, FutureExt, StreamExt};
 use libp2p::core::multiaddr::{Multiaddr, Protocol};
+use libp2p::core::transport::OrTransport;
+use libp2p::core::upgrade;
+use libp2p::dns::DnsConfig;
 use libp2p::gossipsub::{GossipsubEvent, IdentTopic};
 use libp2p::identify::{IdentifyEvent, IdentifyInfo};
+use libp2p::relay::v2::client::Client;
 use libp2p::swarm::SwarmEvent;
+use libp2p::tcp::{GenTcpConfig, TcpTransport};
 use libp2p::{core::transport, swarm::SwarmBuilder, PeerId};
+use libp2p::{identity, noise, Transport};
 use libp2p_core::muxing::StreamMuxerBox;
 use log::info;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::Event;
 
@@ -20,18 +25,60 @@ pub struct SwarmSvc {
 }
 
 impl SwarmSvc {
+    pub async fn new_with_default_transport(local_key: identity::Keypair) -> Self {
+        let local_peer_id = PeerId::from(local_key.public());
+        info!("Local peer id: {:?}", local_peer_id);
+
+        let (relay_transport, client) = Client::new_transport_and_behaviour(local_peer_id);
+
+        let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
+            .into_authentic(&local_key)
+            .expect("Signing libp2p-noise static DH keypair failed.");
+
+        let transport = OrTransport::new(
+            relay_transport,
+            DnsConfig::system(TcpTransport::new(GenTcpConfig::default().port_reuse(true)))
+                .await
+                .unwrap(),
+        )
+        .upgrade(upgrade::Version::V1)
+        .authenticate(noise::NoiseConfig::xx(noise_keys).into_authenticated())
+        .multiplex(libp2p_yamux::YamuxConfig::default())
+        .boxed();
+
+        let behaviour = crate::Behaviour::new(client, &local_key);
+        Self::new(transport, behaviour, local_peer_id)
+    }
+
     pub fn new(
         transport: transport::Boxed<(PeerId, StreamMuxerBox)>,
         behaviour: crate::Behaviour,
         peer_id: PeerId,
     ) -> Self {
-        let mut swarm = SwarmBuilder::new(transport, behaviour, peer_id)
+        let swarm = SwarmBuilder::new(transport, behaviour, peer_id)
             .dial_concurrency_factor(10_u8.try_into().unwrap())
             .build();
         Self { swarm }
     }
 
-    pub async fn listen(&mut self) {
+    pub async fn spawn(
+        &mut self,
+        relay_address: Multiaddr,
+        peer_id: Option<PeerId>,
+        tx: Sender<String>,
+        rx: Receiver<String>,
+    ) {
+        self.listen().await;
+        self.observe_addr(relay_address.clone()).await;
+        self.listen_on_relay(relay_address.clone());
+        if let Some(peer_id) = peer_id {
+            self.dial(relay_address, peer_id);
+        }
+
+        self.spawn_event_loop(tx, rx).await;
+    }
+
+    async fn listen(&mut self) {
         self.swarm
             .listen_on(
                 Multiaddr::empty()
@@ -39,6 +86,7 @@ impl SwarmSvc {
                     .with(Protocol::Tcp(0)),
             )
             .unwrap();
+
         let mut delay = futures_timer::Delay::new(std::time::Duration::from_secs(1)).fuse();
         loop {
             futures::select! {
@@ -58,7 +106,8 @@ impl SwarmSvc {
         }
     }
 
-    pub async fn observe_addr(&mut self) {
+    async fn observe_addr(&mut self, relay_address: Multiaddr) {
+        self.swarm.dial(relay_address.clone()).unwrap();
         let mut learned_observed_addr = false;
         let mut told_relay_observed_addr = false;
 
@@ -87,7 +136,7 @@ impl SwarmSvc {
         }
     }
 
-    pub async fn dial(&mut self, addr: Multiaddr, remote_peer_id: PeerId) {
+    fn dial(&mut self, addr: Multiaddr, remote_peer_id: PeerId) {
         self.swarm
             .dial(
                 addr.with(Protocol::P2pCircuit)
@@ -96,20 +145,34 @@ impl SwarmSvc {
             .unwrap();
     }
 
-    pub async fn listen_on_relay(&mut self, relay_addr: Multiaddr) {
+    fn listen_on_relay(&mut self, relay_address: Multiaddr) {
+        info!("relay_addr: {}", relay_address);
         self.swarm
-            .listen_on(relay_addr.with(Protocol::P2pCircuit))
+            .listen_on(relay_address.with(Protocol::P2pCircuit))
             .unwrap();
     }
 
-    pub async fn spawn_event_loop(&mut self, stdin: &mut Fuse<Lines<io::BufReader<Stdin>>>) {
+    async fn spawn_event_loop(
+        &mut self,
+        remote_in: Sender<String>,
+        mut local_out: Receiver<String>,
+    ) {
+        let stream = async_stream::stream! {
+            while let Some(item) = local_out.recv().await {
+                yield item;
+            }
+        };
+        let stream = stream.fuse();
+
+        tokio::pin!(stream);
+
         loop {
             select! {
-                line = stdin.select_next_some() => {
+                msg = stream.select_next_some() => {
                     if let Err(e) = self.swarm
                         .behaviour_mut()
                         .gossip
-                        .publish(IdentTopic::new("player-info"), line.expect("Stdin not to close").as_bytes())
+                        .publish(IdentTopic::new("player-info"), msg.as_bytes())
                     {
                         println!("Publish error: {:?}", e);
                     }
@@ -131,12 +194,10 @@ impl SwarmSvc {
                         propagation_source: peer_id,
                         message_id: id,
                         message,
-                    })) => println!(
-                        "Got message: {} with id: {} from peer: {:?}",
-                        String::from_utf8_lossy(&message.data),
-                        id,
-                        peer_id
-                    ),
+                    })) => {
+                        let msg = String::from_utf8_lossy(&message.data);
+                        _ = remote_in.send(msg.to_string()).await;
+                    },
                     SwarmEvent::ConnectionEstablished {
                         peer_id, endpoint, ..
                     } => {
