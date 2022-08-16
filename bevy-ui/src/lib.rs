@@ -1,5 +1,8 @@
 mod hero;
+mod npc;
+
 pub use hero::*;
+pub use npc::*;
 
 pub const PIXELS_PER_METER: f32 = 492.3;
 

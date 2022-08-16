@@ -7,8 +7,8 @@ pub struct HeroPlugin;
 impl Plugin for HeroPlugin {
     fn build(&self, app: &mut App) {
         app.add_startup_system(spawn_hero.after("main_setup").label("hero"))
-            .add_system(hero_movement)
-            .add_startup_system(hero_force);
+            .add_system(hero_force);
+        //.add_system(hero_movement);
     }
 }
 
@@ -27,8 +27,8 @@ pub fn spawn_hero(mut commands: Commands) {
         .insert_bundle(GeometryBuilder::build_as(
             &shape,
             DrawMode::Outlined {
-                fill_mode: LyonFillMode::color(Color::WHITE),
-                outline_mode: StrokeMode::new(Color::TEAL, 2.0),
+                fill_mode: LyonFillMode::color(Color::BLACK),
+                outline_mode: StrokeMode::new(Color::YELLOW, 2.0),
             },
             Transform::default(),
         ))
@@ -39,7 +39,7 @@ pub fn spawn_hero(mut commands: Commands) {
         .insert(Collider::ball(10.))
         .insert(Restitution::coefficient(0.7))
         .insert(ExternalImpulse {
-            impulse: Vec2::new(0.0, 0.0),
+            impulse: Vec2::new(0.1, 0.0),
             torque_impulse: 0.0,
         })
         .insert(Hero);
@@ -62,17 +62,25 @@ pub fn hero_movement(
         if keyboard_input.pressed(KeyCode::W) {
             transform.translation.y += 2.;
         }
-        println!(
-            "coordinates: {} {}",
-            transform.translation.x, transform.translation.y
-        );
     }
 }
 
-fn hero_force(mut forces: Query<&mut ExternalImpulse>) {
-    for mut ext in forces.iter_mut() {
-        println!("stupid");
-        ext.impulse = Vec2::new(-1000., -1000.);
-        ext.torque_impulse = 0.5;
+fn hero_force(
+    keyboard_input: Res<Input<KeyCode>>,
+    mut query: Query<&mut ExternalImpulse, With<Hero>>,
+) {
+    for mut ext in query.iter_mut() {
+        if keyboard_input.pressed(KeyCode::A) {
+            ext.impulse = Vec2::new(-0.003, 0.0);
+        }
+        if keyboard_input.pressed(KeyCode::D) {
+            ext.impulse = Vec2::new(0.003, 0.0);
+        }
+        if keyboard_input.pressed(KeyCode::S) {
+            ext.impulse = Vec2::new(0., -0.003);
+        }
+        if keyboard_input.pressed(KeyCode::W) {
+            ext.impulse = Vec2::new(0., 0.003);
+        }
     }
 }
