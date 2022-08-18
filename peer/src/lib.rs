@@ -1,9 +1,9 @@
 mod behaviour;
-mod peerid;
+mod identity;
 mod swarm;
 
 pub use behaviour::*;
-pub use peerid::*;
+pub use identity::*;
 pub use swarm::*;
 
 #[cfg(test)]

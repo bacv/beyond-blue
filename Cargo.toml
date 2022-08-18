@@ -1,7 +1,8 @@
 [workspace]
 
 members = [
-	"bevy-ui",
+	"common",
+	"game",
 	"peer",
 	"relay",
 ]

@@ -1,3 +1,4 @@
+use common::*;
 use std::net::Ipv4Addr;
 
 use futures::{select, FutureExt, StreamExt};
@@ -25,7 +26,7 @@ pub struct SwarmSvc {
 }
 
 impl SwarmSvc {
-    pub async fn new_with_default_transport(local_key: identity::Keypair) -> Self {
+    pub async fn new_with_default_transport(local_key: identity::Keypair) -> BlueResult<Self> {
         let local_peer_id = PeerId::from(local_key.public());
         info!("Local peer id: {:?}", local_peer_id);
 
@@ -46,8 +47,8 @@ impl SwarmSvc {
         .multiplex(libp2p_yamux::YamuxConfig::default())
         .boxed();
 
-        let behaviour = crate::Behaviour::new(client, &local_key);
-        Self::new(transport, behaviour, local_peer_id)
+        let behaviour = crate::Behaviour::new(client, &local_key)?;
+        Ok(Self::new(transport, behaviour, local_peer_id))
     }
 
     pub fn new(

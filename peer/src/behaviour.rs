@@ -1,3 +1,4 @@
+use common::{BlueError, BlueResult};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -24,27 +25,27 @@ pub struct Behaviour {
 }
 
 impl Behaviour {
-    pub fn new(client: Client, key: &identity::Keypair) -> Self {
+    pub fn new(client: Client, key: &identity::Keypair) -> BlueResult<Self> {
         let topics = ["player-info", "player-event"]
             .iter()
             .map(|t| (t.to_string(), Topic::new(t.to_string())))
             .collect::<HashMap<String, IdentTopic>>();
 
-        let gossip = Self::new_gossip_config(key, topics.clone());
+        let gossip = Self::new_gossip_config(key, topics.clone())?;
 
-        Self {
+        Ok(Self {
             relay_client: client,
             identify: Identify::new(IdentifyConfig::new("/TODO/0.0.1".to_string(), key.public())),
             dcutr: dcutr::behaviour::Behaviour::new(),
             gossip,
             topics,
-        }
+        })
     }
 
     fn new_gossip_config(
         key: &identity::Keypair,
         topics: HashMap<String, IdentTopic>,
-    ) -> Gossipsub {
+    ) -> BlueResult<Gossipsub> {
         // To content-address message, we can take the hash of message and use it as an ID.
         let message_id_fn = |message: &GossipsubMessage| {
             let mut s = DefaultHasher::new();
@@ -67,10 +68,10 @@ impl Behaviour {
 
         // subscribes to our topics
         for (_, topic) in topics {
-            gossipsub.subscribe(&topic).unwrap();
+            gossipsub.subscribe(&topic).map_err(BlueError::local_err)?;
         }
 
-        gossipsub
+        Ok(gossipsub)
     }
 }
 

@@ -1,4 +1,5 @@
 use clap::Parser;
+use common::*;
 use futures::StreamExt;
 use libp2p::{Multiaddr, PeerId};
 use std::error::Error;
@@ -20,12 +21,6 @@ struct Opts {
     remote_peer_id: Option<PeerId>,
 }
 
-#[derive(Debug, Parser, PartialEq)]
-enum Mode {
-    Dial,
-    Listen,
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
@@ -38,14 +33,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let h1 = tokio::spawn(async move {
         peer::SwarmSvc::new_with_default_transport(id.get_key())
-            .await
+            .await?
             .spawn(
                 opts.relay_address,
                 opts.remote_peer_id,
                 remote_in,
                 local_out,
             )
-            .await
+            .await;
+
+        BlueResult::Ok(())
     });
     let remote_stream = async_stream::stream! {
         while let Some(item) = remote_out.recv().await {
