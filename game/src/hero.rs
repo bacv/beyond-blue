@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::{FillMode as LyonFillMode, *};
 use bevy_rapier2d::prelude::*;
+use tokio::sync::mpsc;
 
 pub struct HeroPlugin;
 
@@ -67,20 +68,22 @@ pub fn hero_movement(
 
 fn hero_force(
     keyboard_input: Res<Input<KeyCode>>,
-    mut query: Query<&mut ExternalImpulse, With<Hero>>,
+    mut to_server: ResMut<mpsc::Sender<String>>,
+    mut query: Query<(&mut ExternalImpulse, &Transform), With<Hero>>,
 ) {
     for mut ext in query.iter_mut() {
         if keyboard_input.pressed(KeyCode::A) {
-            ext.impulse = Vec2::new(-0.003, 0.0);
+            ext.0.impulse = Vec2::new(-0.003, 0.0);
         }
         if keyboard_input.pressed(KeyCode::D) {
-            ext.impulse = Vec2::new(0.003, 0.0);
+            ext.0.impulse = Vec2::new(0.003, 0.0);
         }
         if keyboard_input.pressed(KeyCode::S) {
-            ext.impulse = Vec2::new(0., -0.003);
+            ext.0.impulse = Vec2::new(0., -0.003);
         }
         if keyboard_input.pressed(KeyCode::W) {
-            ext.impulse = Vec2::new(0., 0.003);
+            ext.0.impulse = Vec2::new(0., 0.003);
         }
+        to_server.try_send(ext.1.translation.to_string());
     }
 }
