@@ -1,10 +1,4 @@
-#[cfg(test)]
-mod tests {
-    use super::*;
+mod http;
+mod swarm;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use swarm::*;
