@@ -40,7 +40,7 @@ impl SwarmSvc {
             relay_transport,
             DnsConfig::system(TcpTransport::new(GenTcpConfig::default().port_reuse(true)))
                 .await
-                .unwrap(),
+                .map_err(BlueError::local_err)?,
         )
         .upgrade(upgrade::Version::V1)
         .authenticate(noise::NoiseConfig::xx(noise_keys).into_authenticated())
@@ -48,18 +48,18 @@ impl SwarmSvc {
         .boxed();
 
         let behaviour = crate::Behaviour::new(client, &local_key)?;
-        Ok(Self::new(transport, behaviour, local_peer_id))
+        Self::try_new(transport, behaviour, local_peer_id)
     }
 
-    pub fn new(
+    pub fn try_new(
         transport: transport::Boxed<(PeerId, StreamMuxerBox)>,
         behaviour: crate::Behaviour,
         peer_id: PeerId,
-    ) -> Self {
+    ) -> BlueResult<Self> {
         let swarm = SwarmBuilder::new(transport, behaviour, peer_id)
-            .dial_concurrency_factor(10_u8.try_into().unwrap())
+            .dial_concurrency_factor(10_u8.try_into().map_err(BlueError::local_err)?)
             .build();
-        Self { swarm }
+        Ok(Self { swarm })
     }
 
     pub async fn spawn(
@@ -68,35 +68,42 @@ impl SwarmSvc {
         peer_id: Option<PeerId>,
         tx: Sender<String>,
         rx: Receiver<String>,
-    ) {
-        self.listen().await;
-        self.observe_addr(relay_address.clone()).await;
-        self.listen_on_relay(relay_address.clone());
+    ) -> BlueResult<()> {
+        self.listen().await?;
+        self.observe_addr(relay_address.clone()).await?;
+        self.listen_on_relay(relay_address.clone())?;
         if let Some(peer_id) = peer_id {
-            self.dial(relay_address, peer_id);
+            self.dial(relay_address, peer_id)?;
         }
 
         self.spawn_event_loop(tx, rx).await;
+
+        Ok(())
     }
 
-    async fn listen(&mut self) {
+    async fn listen(&mut self) -> BlueResult<()> {
         self.swarm
             .listen_on(
                 Multiaddr::empty()
-                    .with("0.0.0.0".parse::<Ipv4Addr>().unwrap().into())
+                    .with(
+                        "0.0.0.0"
+                            .parse::<Ipv4Addr>()
+                            .map_err(BlueError::local_err)?
+                            .into(),
+                    )
                     .with(Protocol::Tcp(0)),
             )
-            .unwrap();
+            .map_err(BlueError::local_err)?;
 
         let mut delay = futures_timer::Delay::new(std::time::Duration::from_secs(1)).fuse();
         loop {
             futures::select! {
                 event = self.swarm.next() => {
-                    match event.unwrap() {
+                    match event.ok_or_else(|| BlueError::local_err("swarm stream was closed"))? {
                         SwarmEvent::NewListenAddr { address, .. } => {
                             info!("Listening on {:?}", address);
                         }
-                        event => panic!("{:?}", event),
+                        event => return Err(BlueError::local_err(format!("unexpected swarm event {:?}", event))),
                     }
                 }
                 _ = delay => {
@@ -105,15 +112,25 @@ impl SwarmSvc {
                 }
             }
         }
+
+        Ok(())
     }
 
-    async fn observe_addr(&mut self, relay_address: Multiaddr) {
-        self.swarm.dial(relay_address.clone()).unwrap();
+    async fn observe_addr(&mut self, relay_address: Multiaddr) -> BlueResult<()> {
+        self.swarm
+            .dial(relay_address.clone())
+            .map_err(BlueError::local_err)?;
+
         let mut learned_observed_addr = false;
         let mut told_relay_observed_addr = false;
 
         loop {
-            match self.swarm.next().await.unwrap() {
+            match self
+                .swarm
+                .next()
+                .await
+                .ok_or_else(|| BlueError::local_err("swarm stream was closed"))?
+            {
                 SwarmEvent::NewListenAddr { .. } => {}
                 SwarmEvent::Dialing { .. } => {}
                 SwarmEvent::ConnectionEstablished { .. } => {}
@@ -135,22 +152,28 @@ impl SwarmSvc {
                 break;
             }
         }
+
+        Ok(())
     }
 
-    fn dial(&mut self, addr: Multiaddr, remote_peer_id: PeerId) {
+    fn dial(&mut self, addr: Multiaddr, remote_peer_id: PeerId) -> BlueResult<()> {
         self.swarm
             .dial(
                 addr.with(Protocol::P2pCircuit)
                     .with(Protocol::P2p(remote_peer_id.into())),
             )
-            .unwrap();
+            .map_err(BlueError::local_err)?;
+
+        Ok(())
     }
 
-    fn listen_on_relay(&mut self, relay_address: Multiaddr) {
+    fn listen_on_relay(&mut self, relay_address: Multiaddr) -> BlueResult<()> {
         info!("relay_addr: {}", relay_address);
         self.swarm
             .listen_on(relay_address.with(Protocol::P2pCircuit))
-            .unwrap();
+            .map_err(BlueError::local_err)?;
+
+        Ok(())
     }
 
     async fn spawn_event_loop(

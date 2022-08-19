@@ -11,14 +11,14 @@ pub enum BlueError {
 impl BlueError {
     pub fn local_err<E>(e: E) -> Self
     where
-        E: std::error::Error,
+        E: ToString,
     {
         BlueError::Local(e.to_string())
     }
 
     pub fn remote_err<E>(e: E) -> Self
     where
-        E: std::error::Error,
+        E: ToString,
     {
         BlueError::Remote(e.to_string())
     }

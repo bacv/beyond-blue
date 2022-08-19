@@ -9,7 +9,6 @@ impl Plugin for HeroPlugin {
     fn build(&self, app: &mut App) {
         app.add_startup_system(spawn_hero.after("main_setup").label("hero"))
             .add_system(hero_force);
-        //.add_system(hero_movement);
     }
 }
 
@@ -46,44 +45,24 @@ pub fn spawn_hero(mut commands: Commands) {
         .insert(Hero);
 }
 
-pub fn hero_movement(
-    keyboard_input: Res<Input<KeyCode>>,
-    mut position: Query<&mut Transform, With<Hero>>,
-) {
-    for mut transform in position.iter_mut() {
-        if keyboard_input.pressed(KeyCode::A) {
-            transform.translation.x -= 2.;
-        }
-        if keyboard_input.pressed(KeyCode::D) {
-            transform.translation.x += 2.;
-        }
-        if keyboard_input.pressed(KeyCode::S) {
-            transform.translation.y -= 2.;
-        }
-        if keyboard_input.pressed(KeyCode::W) {
-            transform.translation.y += 2.;
-        }
-    }
-}
-
 fn hero_force(
     keyboard_input: Res<Input<KeyCode>>,
-    mut to_server: ResMut<mpsc::Sender<String>>,
+    to_server: ResMut<mpsc::Sender<String>>,
     mut query: Query<(&mut ExternalImpulse, &Transform), With<Hero>>,
 ) {
-    for mut ext in query.iter_mut() {
+    for (mut ext, transform) in query.iter_mut() {
         if keyboard_input.pressed(KeyCode::A) {
-            ext.0.impulse = Vec2::new(-0.003, 0.0);
+            ext.impulse = Vec2::new(-0.003, 0.0);
         }
         if keyboard_input.pressed(KeyCode::D) {
-            ext.0.impulse = Vec2::new(0.003, 0.0);
+            ext.impulse = Vec2::new(0.003, 0.0);
         }
         if keyboard_input.pressed(KeyCode::S) {
-            ext.0.impulse = Vec2::new(0., -0.003);
+            ext.impulse = Vec2::new(0., -0.003);
         }
         if keyboard_input.pressed(KeyCode::W) {
-            ext.0.impulse = Vec2::new(0., 0.003);
+            ext.impulse = Vec2::new(0., 0.003);
         }
-        to_server.try_send(ext.1.translation.to_string());
+        to_server.try_send(transform.translation.to_string());
     }
 }
