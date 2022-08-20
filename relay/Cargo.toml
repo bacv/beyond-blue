@@ -14,3 +14,6 @@ libp2p = "0.46.1"
 libp2p-yamux = "0.38.0"
 log = "0.4.17"
 tokio = { version = "1.20.1", features = ["macros", "rt-multi-thread", "sync", "tokio-macros", "io-util"] }
+actix-web = "4.1.0"
+serde = "1.0.143"
+serde_json = "1.0.83"

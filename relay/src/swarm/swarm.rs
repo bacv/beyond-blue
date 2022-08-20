@@ -1,5 +1,7 @@
+use std::sync::{Arc, Mutex};
+
 use common::*;
-use futures::{select, FutureExt, StreamExt};
+use futures::StreamExt;
 
 use libp2p::{
     core::{
@@ -16,14 +18,20 @@ use libp2p::{
 };
 use log::info;
 
+use crate::PeerStore;
+
 type RelaySwarm = libp2p::swarm::Swarm<crate::swarm::Behaviour>;
 
 pub struct Swarm {
     swarm: RelaySwarm,
+    store: Arc<Mutex<dyn PeerStore>>,
 }
 
 impl Swarm {
-    pub async fn new_with_default_transport(local_key: identity::Keypair) -> BlueResult<Self> {
+    pub async fn new_with_default_transport(
+        local_key: identity::Keypair,
+        store: Arc<Mutex<dyn PeerStore>>,
+    ) -> BlueResult<Self> {
         let local_peer_id = PeerId::from(local_key.public());
         info!("Local peer id: {:?}", local_peer_id);
 
@@ -45,18 +53,19 @@ impl Swarm {
         .boxed();
 
         let behaviour = crate::Behaviour::new(&local_key)?;
-        Self::try_new(transport, behaviour, local_peer_id)
+        Self::try_new(transport, behaviour, local_peer_id, store)
     }
 
     pub fn try_new(
         transport: transport::Boxed<(PeerId, StreamMuxerBox)>,
         behaviour: crate::Behaviour,
         peer_id: PeerId,
+        store: Arc<Mutex<dyn PeerStore>>,
     ) -> BlueResult<Self> {
         let swarm = SwarmBuilder::new(transport, behaviour, peer_id)
             .dial_concurrency_factor(10_u8.try_into().map_err(BlueError::local_err)?)
             .build();
-        Ok(Self { swarm })
+        Ok(Self { swarm, store })
     }
 
     pub async fn listen_on(&mut self, addr: Multiaddr) -> BlueResult<()> {

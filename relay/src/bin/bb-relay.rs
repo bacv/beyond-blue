@@ -1,18 +1,12 @@
+use actix_web::{web, App, HttpServer};
 use clap::Parser;
-use futures::executor::block_on;
-use futures::stream::StreamExt;
-use libp2p::core::upgrade;
-use libp2p::identify::{Identify, IdentifyConfig};
+use common::BlueError;
 use libp2p::multiaddr::Protocol;
-use libp2p::ping::{Ping, PingConfig};
-use libp2p::relay::v2::relay::Relay;
-use libp2p::swarm::{Swarm, SwarmEvent};
-use libp2p::tcp::TcpTransport;
-use libp2p::Transport;
-use libp2p::{identity, PeerId};
-use libp2p::{noise, Multiaddr};
+use libp2p::Multiaddr;
+use relay::{api_config, MemoryPeerStore, SharedStore};
 use std::error::Error;
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Parser)]
 #[clap(name = "libp2p relay")]
@@ -35,16 +29,33 @@ async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
     let opt = Opt::parse();
 
+    let store: SharedStore = Arc::new(Mutex::new(MemoryPeerStore::default()));
+
     let id = common::Identity::from_file("nothing".into());
-    let mut swarm = relay::Swarm::new_with_default_transport(id.get_key()).await?;
-    // Listen on all interfaces
+    let mut swarm = relay::Swarm::new_with_default_transport(id.get_key(), store.clone()).await?;
+
     let listen_addr = Multiaddr::empty()
         .with(match opt.use_ipv6 {
             Some(true) => Protocol::from(Ipv6Addr::UNSPECIFIED),
             _ => Protocol::from(Ipv4Addr::UNSPECIFIED),
         })
         .with(Protocol::Tcp(opt.port));
-    swarm.listen_on(listen_addr).await?;
-    swarm.spawn().await;
+
+    let swarm = tokio::spawn(async move {
+        swarm.listen_on(listen_addr).await?;
+        swarm.spawn().await?;
+        Ok::<(), BlueError>(())
+    });
+
+    let http_api = HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::new(store.clone()))
+            .configure(api_config)
+    })
+    .bind(("127.0.0.1", 8080))?
+    .run();
+
+    _ = tokio::join!(swarm, http_api);
+
     Ok(())
 }
