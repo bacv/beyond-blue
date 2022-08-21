@@ -1,3 +1,4 @@
+use actix_web::rt::signal;
 use actix_web::{web, App, HttpServer};
 use clap::Parser;
 use common::BlueError;
@@ -21,7 +22,11 @@ struct Opt {
 
     /// The port used to listen on all interfaces
     #[clap(long)]
-    port: u16,
+    swarm_port: u16,
+
+    /// The port used to serve http api
+    #[clap(long)]
+    http_port: u16,
 }
 
 #[tokio::main]
@@ -39,7 +44,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             Some(true) => Protocol::from(Ipv6Addr::UNSPECIFIED),
             _ => Protocol::from(Ipv4Addr::UNSPECIFIED),
         })
-        .with(Protocol::Tcp(opt.port));
+        .with(Protocol::Tcp(opt.swarm_port));
 
     let swarm = tokio::spawn(async move {
         swarm.listen_on(listen_addr).await?;
@@ -52,7 +57,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .app_data(web::Data::new(store.clone()))
             .configure(api_config)
     })
-    .bind(("127.0.0.1", 8080))?
+    .bind(("127.0.0.1", opt.http_port))?
     .run();
 
     _ = tokio::join!(swarm, http_api);

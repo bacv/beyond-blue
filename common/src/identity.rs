@@ -1,8 +1,12 @@
-use libp2p::identity;
+use std::hash::{Hash, Hasher};
+
+use libp2p::identity::{self, PublicKey};
 use rand_core::{OsRng, RngCore};
 
+#[derive(Clone)]
 pub struct Identity {
     key: identity::Keypair,
+    public: PublicKey,
 }
 
 impl Identity {
@@ -12,8 +16,10 @@ impl Identity {
         let mut key = [0u8; 32];
         OsRng.fill_bytes(&mut key);
 
+        let key = Self::generate_ed25519(&mut key);
         Self {
-            key: Self::generate_ed25519(&mut key),
+            public: key.public(),
+            key,
         }
     }
 
@@ -28,3 +34,17 @@ impl Identity {
         identity::Keypair::Ed25519(secret_key.into())
     }
 }
+
+impl PartialEq for Identity {
+    fn eq(&self, other: &Self) -> bool {
+        self.public == other.public
+    }
+}
+
+impl Hash for Identity {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.public.to_peer_id().to_string().hash(state);
+    }
+}
+
+impl Eq for Identity {}

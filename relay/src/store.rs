@@ -1,33 +1,29 @@
-use common::{Identity, Peer};
+use std::collections::HashSet;
+
+use libp2p::PeerId;
 
 pub trait PeerStore: Send + Sync {
-    fn add(&self, peer: Peer);
-    fn get(&self, key: Identity);
-    fn get_all(&self) -> Vec<Peer>;
-    fn remove(&self, key: Identity);
+    fn add(&mut self, peer: PeerId);
+    fn get_all(&self) -> Vec<PeerId>;
+    fn remove(&mut self, peer: PeerId);
 }
 
 #[derive(Default)]
 pub struct MemoryPeerStore {
-    peers: Vec<Peer>,
+    peers: HashSet<PeerId>,
 }
 
-impl MemoryPeerStore {}
-
 impl PeerStore for MemoryPeerStore {
-    fn add(&self, peer: Peer) {
-        todo!()
+    fn add(&mut self, peer: PeerId) {
+        self.peers.insert(peer);
     }
 
-    fn get(&self, key: Identity) {
-        todo!()
+    fn get_all(&self) -> Vec<PeerId> {
+        let peers = self.peers.iter().cloned().collect::<Vec<PeerId>>();
+        peers
     }
 
-    fn get_all(&self) -> Vec<Peer> {
-        todo!()
-    }
-
-    fn remove(&self, key: Identity) {
-        todo!()
+    fn remove(&mut self, peer: PeerId) {
+        self.peers.remove(&peer);
     }
 }

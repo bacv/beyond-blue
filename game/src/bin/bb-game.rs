@@ -11,10 +11,6 @@ use tokio::sync::mpsc;
 #[derive(Debug, Parser)]
 #[clap(name = "Example Beyond Blue peer")]
 struct Opts {
-    /// Fixed value to generate deterministic peer id.
-    #[clap(long)]
-    secret_key_seed: u8,
-
     /// The listening address
     #[clap(long)]
     relay_address: Multiaddr,
@@ -36,6 +32,7 @@ async fn main() {
                 .build()
                 .unwrap(),
         )
+        .insert_resource(opts)
         .add_plugins(DefaultPlugins)
         .add_plugin(HeroPlugin)
         .add_plugin(NpcPlugin)
@@ -53,24 +50,20 @@ fn setup_physics(mut commands: Commands, mut rapier_config: ResMut<RapierConfigu
     commands.spawn_bundle(Camera2dBundle::default());
 }
 
-fn setup_network(mut commands: Commands, runtime: Res<Runtime>) {
+fn setup_network(mut commands: Commands, runtime: Res<Runtime>, opts: Res<Opts>) {
     let (local_in, local_out) = mpsc::channel(32);
     let (remote_in, mut remote_out) = mpsc::channel(32);
 
+    let relay_address = opts.relay_address.clone();
     runtime.spawn(async move {
         let id = common::Identity::from_file("nothing".into());
-        let relay_address =
-            "/ip4/145.239.92.79/tcp/8842/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN";
+        //let relay_address =
+        //"/ip4/145.239.92.79/tcp/8842/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN";
 
         tokio::spawn(async move {
             peer::SwarmSvc::new_with_default_transport(id.get_key())
                 .await?
-                .spawn(
-                    relay_address.try_into().map_err(BlueError::local_err)?,
-                    None,
-                    remote_in,
-                    local_out,
-                )
+                .spawn(relay_address, None, remote_in, local_out)
                 .await;
 
             BlueResult::Ok(())

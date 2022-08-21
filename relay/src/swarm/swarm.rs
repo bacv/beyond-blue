@@ -11,20 +11,20 @@ use libp2p::{
     },
     dns::DnsConfig,
     identity, noise,
-    relay::v2::client::Client,
+    relay::v2::{client::Client, relay},
     swarm::{SwarmBuilder, SwarmEvent},
     tcp::{GenTcpConfig, TcpTransport},
     Multiaddr, PeerId, Transport,
 };
 use log::info;
 
-use crate::PeerStore;
+use crate::{Event, PeerStore, SharedStore};
 
 type RelaySwarm = libp2p::swarm::Swarm<crate::swarm::Behaviour>;
 
 pub struct Swarm {
     swarm: RelaySwarm,
-    store: Arc<Mutex<dyn PeerStore>>,
+    store: SharedStore,
 }
 
 impl Swarm {
@@ -76,7 +76,16 @@ impl Swarm {
     pub async fn spawn(&mut self) -> BlueResult<()> {
         loop {
             match self.swarm.select_next_some().await {
-                SwarmEvent::Behaviour(crate::Event::Relay(event)) => {
+                SwarmEvent::Behaviour(Event::Relay(relay::Event::ReservationReqAccepted {
+                    src_peer_id: peer_id,
+                    renewed: _,
+                })) => {
+                    self.store
+                        .lock()
+                        .map_err(BlueError::local_err)?
+                        .add(peer_id);
+                }
+                SwarmEvent::Behaviour(Event::Relay(event)) => {
                     println!("{:?}", event)
                 }
                 SwarmEvent::NewListenAddr { address, .. } => {

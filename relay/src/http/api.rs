@@ -1,4 +1,4 @@
-use common::Peer;
+use libp2p::PeerId;
 use serde::{Deserialize, Serialize};
 
 use actix_web::{error, web, Responder, Result};
@@ -27,10 +27,10 @@ pub struct PeerInfo {
     addr: String,
 }
 
-impl From<&Peer> for PeerInfo {
-    fn from(peer: &Peer) -> Self {
+impl From<&PeerId> for PeerInfo {
+    fn from(peer: &PeerId) -> Self {
         PeerInfo {
-            addr: peer.conn_info.mutliaddr.to_string(),
+            addr: peer.to_string(),
         }
     }
 }
