@@ -60,7 +60,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .bind(("127.0.0.1", opt.http_port))?
     .run();
 
-    _ = tokio::join!(swarm, http_api);
+    let server = async {
+        _ = tokio::join!(swarm, http_api);
+    };
+
+    tokio::select! {
+        _ = server => {},
+        _ = signal::ctrl_c() => {},
+    }
 
     Ok(())
 }

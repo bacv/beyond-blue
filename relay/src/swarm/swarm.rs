@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use common::*;
-use futures::StreamExt;
+use futures::{select, FutureExt, StreamExt};
 
 use libp2p::{
     core::{
@@ -17,6 +17,7 @@ use libp2p::{
     Multiaddr, PeerId, Transport,
 };
 use log::info;
+use tokio::sync::oneshot;
 
 use crate::{Event, PeerStore, SharedStore};
 
@@ -25,6 +26,8 @@ type RelaySwarm = libp2p::swarm::Swarm<crate::swarm::Behaviour>;
 pub struct Swarm {
     swarm: RelaySwarm,
     store: SharedStore,
+    stop_tx: Option<oneshot::Sender<()>>,
+    stop_rx: Option<oneshot::Receiver<()>>,
 }
 
 impl Swarm {
@@ -35,7 +38,7 @@ impl Swarm {
         let local_peer_id = PeerId::from(local_key.public());
         info!("Local peer id: {:?}", local_peer_id);
 
-        let (relay_transport, client) = Client::new_transport_and_behaviour(local_peer_id);
+        let (relay_transport, _) = Client::new_transport_and_behaviour(local_peer_id);
 
         let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
             .into_authentic(&local_key)
@@ -62,10 +65,16 @@ impl Swarm {
         peer_id: PeerId,
         store: Arc<Mutex<dyn PeerStore>>,
     ) -> BlueResult<Self> {
+        let (stop_tx, stop_rx) = oneshot::channel();
         let swarm = SwarmBuilder::new(transport, behaviour, peer_id)
             .dial_concurrency_factor(10_u8.try_into().map_err(BlueError::local_err)?)
             .build();
-        Ok(Self { swarm, store })
+        Ok(Self {
+            swarm,
+            store,
+            stop_tx: Some(stop_tx),
+            stop_rx: Some(stop_rx),
+        })
     }
 
     pub async fn listen_on(&mut self, addr: Multiaddr) -> BlueResult<()> {
@@ -74,6 +83,24 @@ impl Swarm {
     }
 
     pub async fn spawn(&mut self) -> BlueResult<()> {
+        let rx = self
+            .stop_rx
+            .take()
+            .ok_or_else(|| BlueError::local_err("already stopped"))?;
+
+        select! {
+            _ = rx.fuse() => {},
+            _ = self.event_loop().fuse() => {},
+        };
+
+        Ok(())
+    }
+
+    pub fn stop(&mut self) {
+        self.stop_tx.take();
+    }
+
+    async fn event_loop(&mut self) -> BlueResult<()> {
         loop {
             match self.swarm.select_next_some().await {
                 SwarmEvent::Behaviour(Event::Relay(relay::Event::ReservationReqAccepted {
