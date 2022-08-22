@@ -55,6 +55,11 @@ impl Swarm {
         .multiplex(libp2p_yamux::YamuxConfig::default())
         .boxed();
 
+        store
+            .lock()
+            .map_err(BlueError::local_err)?
+            .set_relay_peer_id(&local_peer_id);
+
         let behaviour = crate::Behaviour::new(&local_key)?;
         Self::try_new(transport, behaviour, local_peer_id, store)
     }
@@ -116,6 +121,10 @@ impl Swarm {
                     println!("{:?}", event)
                 }
                 SwarmEvent::NewListenAddr { address, .. } => {
+                    self.store
+                        .lock()
+                        .map_err(BlueError::local_err)?
+                        .append_relay_addr(address.to_string());
                     println!("Listening on {:?}", address);
                 }
                 _ => {}
