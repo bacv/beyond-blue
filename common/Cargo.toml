@@ -6,4 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+libp2p = "0.46.1"
+rand_core = "0.6.3"
 thiserror = "1.0.32"

@@ -198,7 +198,7 @@ impl SwarmSvc {
                         .gossip
                         .publish(IdentTopic::new("player-info"), msg.as_bytes())
                     {
-                        println!("Publish error: {:?}", e);
+                        //println!("Publish error: {:?}", e);
                     }
                 },
                 event = self.swarm.select_next_some() => match event {
@@ -215,8 +215,8 @@ impl SwarmSvc {
                         info!("{:?}", event)
                     }
                     SwarmEvent::Behaviour(Event::Gossipsub(GossipsubEvent::Message {
-                        propagation_source: peer_id,
-                        message_id: id,
+                        propagation_source: _peer_id,
+                        message_id: _id,
                         message,
                     })) => {
                         let msg = String::from_utf8_lossy(&message.data);

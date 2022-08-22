@@ -27,7 +27,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let opts = Opts::parse();
 
-    let id = peer::Identity::from_file("nothing".into());
+    let id = common::Identity::from_file("nothing".into());
     let (local_in, local_out) = mpsc::channel(32);
     let (remote_in, mut remote_out) = mpsc::channel(32);
 
