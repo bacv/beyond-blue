@@ -3,12 +3,14 @@ use std::sync::{Arc, Mutex};
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
 use bevy_rapier2d::prelude::*;
-use beyond_blue::{HeroPlugin, NpcPlugin, PIXELS_PER_METER};
+use beyond_blue::{GameState, HeroPlugin, NpcPlugin, TestGameMessage, PIXELS_PER_METER};
 use clap::Parser;
 use common::*;
-use libp2p::PeerId;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
+
+const WINDOW_WIDTH: usize = 600;
+const WINDOW_HEIGHT: usize = 480;
 
 #[derive(Debug, Parser)]
 #[clap(name = "Example Beyond Blue peer")]
@@ -23,6 +25,12 @@ async fn main() {
     let opts = Opts::parse();
 
     App::new()
+        .insert_resource(WindowDescriptor {
+            title: "Beyond Blue".to_string(),
+            width: WINDOW_WIDTH as f32,
+            height: WINDOW_HEIGHT as f32,
+            ..Default::default()
+        })
         .insert_resource(Msaa::default())
         .insert_resource(
             tokio::runtime::Builder::new_multi_thread()
@@ -61,7 +69,7 @@ fn setup_network(mut commands: Commands, runtime: Res<Runtime>, opts: Res<Opts>)
         tokio::spawn(async move {
             let res = peer::Swarm::new_with_default_transport(id.get_key())
                 .await?
-                .spawn(relay_address, remote_in, local_out)
+                .spawn::<TestGameMessage>(relay_address, remote_in, local_out)
                 .await;
 
             log::info!("Game swarm result: {:?}", res);
@@ -72,4 +80,5 @@ fn setup_network(mut commands: Commands, runtime: Res<Runtime>, opts: Res<Opts>)
 
     commands.insert_resource(local_in);
     commands.insert_resource(Arc::new(Mutex::new(remote_out)));
+    commands.insert_resource(GameState::default());
 }

@@ -11,7 +11,7 @@ pub struct Identity {
 
 impl Identity {
     /// Read keypair from file, if doesn't exist, generate a new one.
-    pub fn from_file(path: String) -> Self {
+    pub fn from_file(_path: String) -> Self {
         // TODO: Use mnemonic seed phrase or pass [u8] derived from it.
         let mut key = [0u8; 32];
         OsRng.fill_bytes(&mut key);

@@ -16,10 +16,16 @@ use libp2p::{core::transport, swarm::SwarmBuilder, PeerId};
 use libp2p::{identity, noise, Transport};
 use libp2p_core::muxing::StreamMuxerBox;
 use log::info;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::Event;
+
+#[derive(Serialize, Deserialize, Clone)]
+pub enum GameEvent<M> {
+    NewConnection(String),
+    Event(String, M),
+}
 
 type BBSwarm = libp2p::swarm::Swarm<crate::Behaviour>;
 
@@ -64,12 +70,15 @@ impl Swarm {
         Ok(Self { swarm })
     }
 
-    pub async fn spawn(
+    pub async fn spawn<M>(
         &mut self,
         base_url: url::Url,
-        tx: Sender<String>,
-        rx: Receiver<String>,
-    ) -> BlueResult<()> {
+        tx: Sender<GameEvent<M>>,
+        rx: Receiver<M>,
+    ) -> BlueResult<()>
+    where
+        M: Serialize + DeserializeOwned + Clone,
+    {
         self.listen().await?;
 
         let relay_info_url = base_url.join("/api/relay").map_err(BlueError::local_err)?;
@@ -89,7 +98,8 @@ impl Swarm {
             .await
             .map_err(BlueError::local_err)?;
 
-        // example of multiaddr: /ip4/10.0.0.11/tcp/8842/p2p/12D3KooWKrvVmXWSLcfAB5J32TwPe4LHtFj6yYM5gamdEQFZH5ci
+        // example of multiaddr:
+        // /ip4/10.0.0.11/tcp/8842/p2p/12D3KooWKrvVmXWSLcfAB5J32TwPe4LHtFj6yYM5gamdEQFZH5ci
         let mut relay_address = Multiaddr::from_str("").map_err(BlueError::local_err)?;
         let mut connected = false;
 
@@ -230,11 +240,13 @@ impl Swarm {
         Ok(())
     }
 
-    async fn spawn_event_loop(
+    async fn spawn_event_loop<M>(
         &mut self,
-        remote_in: Sender<String>,
-        mut local_out: Receiver<String>,
-    ) {
+        remote_in: Sender<GameEvent<M>>,
+        mut local_out: Receiver<M>,
+    ) where
+        M: Serialize + DeserializeOwned + Clone,
+    {
         let stream = async_stream::stream! {
             while let Some(item) = local_out.recv().await {
                 yield item;
@@ -247,13 +259,11 @@ impl Swarm {
         loop {
             select! {
                 msg = stream.select_next_some() => {
-                    if let Err(e) = self.swarm
+                    let msg = rmp_serde::to_vec(&msg).unwrap();
+                    _ = self.swarm
                         .behaviour_mut()
                         .gossip
-                        .publish(IdentTopic::new("player-info"), msg.as_bytes())
-                    {
-                        //println!("Publish error: {:?}", e);
-                    }
+                        .publish(IdentTopic::new("player-info"), msg);
                 },
                 event = self.swarm.select_next_some() => match event {
                     SwarmEvent::NewListenAddr { address, .. } => {
@@ -269,17 +279,18 @@ impl Swarm {
                         info!("{:?}", event)
                     }
                     SwarmEvent::Behaviour(Event::Gossipsub(GossipsubEvent::Message {
-                        propagation_source: _peer_id,
+                        propagation_source: peer_id,
                         message_id: _id,
                         message,
                     })) => {
-                        let msg = String::from_utf8_lossy(&message.data);
-                        _ = remote_in.send(msg.to_string()).await;
+                        let msg: M = rmp_serde::from_slice(&message.data).unwrap();
+                        let msg = GameEvent::Event(peer_id.to_string(), msg.clone());
+                        _ = remote_in.send(msg.clone()).await;
                     },
                     SwarmEvent::ConnectionEstablished {
                         peer_id, endpoint, ..
                     } => {
-                        remote_in.send("connected".into()).await;
+                        _ = remote_in.send(GameEvent::NewConnection(peer_id.to_string())).await;
                         info!("Established connection to {:?} via {:?}", peer_id, endpoint);
                     }
                     SwarmEvent::OutgoingConnectionError { peer_id, error } => {
