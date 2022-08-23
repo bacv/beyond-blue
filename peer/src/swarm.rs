@@ -77,14 +77,14 @@ impl Swarm {
 
         let relay_info = reqwest::get(relay_info_url)
             .await
-            .map_err(BlueError::local_err)?
+            .map_err(|e| BlueError::local_err(format!("relay info err {:?}", e)))?
             .json::<WebRelayInfo>()
             .await
             .map_err(BlueError::local_err)?;
 
         let peer_info = reqwest::get(peers_info_url)
             .await
-            .map_err(BlueError::local_err)?
+            .map_err(|e| BlueError::local_err(format!("peer info err {:?}", e)))?
             .json::<Vec<WebPeerInfo>>()
             .await
             .map_err(BlueError::local_err)?;
@@ -98,14 +98,21 @@ impl Swarm {
             relay_address =
                 Multiaddr::from_str(&relay_address_str).map_err(BlueError::local_err)?;
 
+            info!("trying addr: {:?}", &relay_address_str);
             match self.observe_addr(relay_address.clone()).await {
                 Ok(_) => {
+                    info!("connected to: {}", relay_address_str);
                     connected = true;
                     break;
                 }
-                Err(_) => continue,
+                Err(_) => {
+                    info!("failed to connect to {}", relay_address_str);
+                    continue;
+                }
             }
         }
+
+        info!("addr: {:?}", &relay_address);
 
         if !connected {
             return Err(BlueError::local_err("Unable to connect to relay"));
@@ -187,6 +194,9 @@ impl Swarm {
                 })) => {
                     info!("Relay told us our public address: {:?}", observed_addr);
                     learned_observed_addr = true;
+                }
+                SwarmEvent::OutgoingConnectionError { peer_id: _, error } => {
+                    return Err(BlueError::local_err(error));
                 }
                 event => info!("{:?}", event),
             }
