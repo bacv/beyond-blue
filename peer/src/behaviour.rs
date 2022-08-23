@@ -8,6 +8,7 @@ use libp2p::gossipsub::{
     Gossipsub, GossipsubMessage, IdentTopic, MessageAuthenticity, MessageId, Topic, ValidationMode,
 };
 use libp2p::identify::{Identify, IdentifyConfig, IdentifyEvent};
+use libp2p::ping::PingEvent;
 use libp2p::relay::v2::client::{self, Client};
 use libp2p::{dcutr, gossipsub};
 use libp2p::{identity, NetworkBehaviour};
@@ -77,10 +78,17 @@ impl Behaviour {
 
 #[derive(Debug)]
 pub enum Event {
+    Ping(PingEvent),
     Identify(IdentifyEvent),
     Relay(client::Event),
     Dcutr(dcutr::behaviour::Event),
     Gossipsub(gossipsub::GossipsubEvent),
+}
+
+impl From<PingEvent> for Event {
+    fn from(e: PingEvent) -> Self {
+        Event::Ping(e)
+    }
 }
 
 impl From<IdentifyEvent> for Event {

@@ -1,3 +1,5 @@
+use std::sync::{mpsc, Arc, Mutex};
+
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::{FillMode as LyonFillMode, *};
 use bevy_rapier2d::prelude::*;
@@ -12,6 +14,17 @@ impl Plugin for NpcPlugin {
 
 #[derive(Component)]
 pub struct Npc;
+
+pub fn handle_conn_events(
+    mut commands: Commands,
+    from_server: Res<Arc<Mutex<mpsc::Receiver<String>>>>,
+) {
+    if let Ok(msg) = from_server.lock().unwrap().recv() {
+        if msg.eq("connected") {
+            spawn_npc(commands);
+        }
+    }
+}
 
 pub fn spawn_npc(mut commands: Commands) {
     let shape = shapes::RegularPolygon {

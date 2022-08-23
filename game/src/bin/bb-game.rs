@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
 use bevy_rapier2d::prelude::*;
@@ -48,7 +50,7 @@ fn setup_physics(mut commands: Commands, mut rapier_config: ResMut<RapierConfigu
 
 fn setup_network(mut commands: Commands, runtime: Res<Runtime>, opts: Res<Opts>) {
     let (local_in, local_out) = mpsc::channel(32);
-    let (remote_in, mut remote_out) = mpsc::channel(32);
+    let (remote_in, remote_out) = mpsc::channel(32);
 
     let relay_address = opts.relay_address.clone();
     runtime.spawn(async move {
@@ -67,5 +69,7 @@ fn setup_network(mut commands: Commands, runtime: Res<Runtime>, opts: Res<Opts>)
             BlueResult::Ok(())
         });
     });
+
     commands.insert_resource(local_in);
+    commands.insert_resource(Arc::new(Mutex::new(remote_out)));
 }

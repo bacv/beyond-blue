@@ -269,6 +269,7 @@ impl Swarm {
                     SwarmEvent::ConnectionEstablished {
                         peer_id, endpoint, ..
                     } => {
+                        remote_in.send("connected".into()).await;
                         info!("Established connection to {:?} via {:?}", peer_id, endpoint);
                     }
                     SwarmEvent::OutgoingConnectionError { peer_id, error } => {
