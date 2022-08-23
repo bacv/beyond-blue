@@ -3,6 +3,8 @@ use bevy_prototype_lyon::prelude::{FillMode as LyonFillMode, *};
 use bevy_rapier2d::prelude::*;
 use tokio::sync::mpsc;
 
+use crate::TestGameMessage;
+
 pub struct HeroPlugin;
 
 impl Plugin for HeroPlugin {
@@ -47,7 +49,7 @@ pub fn spawn_hero(mut commands: Commands) {
 
 fn hero_force(
     keyboard_input: Res<Input<KeyCode>>,
-    to_server: ResMut<mpsc::Sender<String>>,
+    to_server: ResMut<mpsc::Sender<TestGameMessage>>,
     mut query: Query<(&mut ExternalImpulse, &Transform), With<Hero>>,
 ) {
     for (mut ext, transform) in query.iter_mut() {
@@ -63,6 +65,10 @@ fn hero_force(
         if keyboard_input.pressed(KeyCode::W) {
             ext.impulse = Vec2::new(0., 0.003);
         }
-        to_server.try_send(transform.translation.to_string());
+
+        _ = to_server.try_send(TestGameMessage::Move(
+            transform.translation.x,
+            transform.translation.y,
+        ));
     }
 }

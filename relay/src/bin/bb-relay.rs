@@ -57,7 +57,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .app_data(web::Data::new(store.clone()))
             .configure(api_config)
     })
-    .bind(("127.0.0.1", opt.http_port))?
+    .bind(("0.0.0.0", opt.http_port))?
     .run();
 
     let server = async {

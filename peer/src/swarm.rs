@@ -16,10 +16,16 @@ use libp2p::{core::transport, swarm::SwarmBuilder, PeerId};
 use libp2p::{identity, noise, Transport};
 use libp2p_core::muxing::StreamMuxerBox;
 use log::info;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::Event;
+
+#[derive(Serialize, Deserialize, Clone)]
+pub enum GameEvent<M> {
+    NewConnection(String),
+    Event(String, M),
+}
 
 type BBSwarm = libp2p::swarm::Swarm<crate::Behaviour>;
 
@@ -64,12 +70,15 @@ impl Swarm {
         Ok(Self { swarm })
     }
 
-    pub async fn spawn(
+    pub async fn spawn<M>(
         &mut self,
         base_url: url::Url,
-        tx: Sender<String>,
-        rx: Receiver<String>,
-    ) -> BlueResult<()> {
+        tx: Sender<GameEvent<M>>,
+        rx: Receiver<M>,
+    ) -> BlueResult<()>
+    where
+        M: Serialize + DeserializeOwned + Clone,
+    {
         self.listen().await?;
 
         let relay_info_url = base_url.join("/api/relay").map_err(BlueError::local_err)?;
@@ -77,19 +86,20 @@ impl Swarm {
 
         let relay_info = reqwest::get(relay_info_url)
             .await
-            .map_err(BlueError::local_err)?
+            .map_err(|e| BlueError::local_err(format!("relay info err {:?}", e)))?
             .json::<WebRelayInfo>()
             .await
             .map_err(BlueError::local_err)?;
 
         let peer_info = reqwest::get(peers_info_url)
             .await
-            .map_err(BlueError::local_err)?
+            .map_err(|e| BlueError::local_err(format!("peer info err {:?}", e)))?
             .json::<Vec<WebPeerInfo>>()
             .await
             .map_err(BlueError::local_err)?;
 
-        // example of multiaddr: /ip4/10.0.0.11/tcp/8842/p2p/12D3KooWKrvVmXWSLcfAB5J32TwPe4LHtFj6yYM5gamdEQFZH5ci
+        // example of multiaddr:
+        // /ip4/10.0.0.11/tcp/8842/p2p/12D3KooWKrvVmXWSLcfAB5J32TwPe4LHtFj6yYM5gamdEQFZH5ci
         let mut relay_address = Multiaddr::from_str("").map_err(BlueError::local_err)?;
         let mut connected = false;
 
@@ -98,14 +108,21 @@ impl Swarm {
             relay_address =
                 Multiaddr::from_str(&relay_address_str).map_err(BlueError::local_err)?;
 
+            info!("trying addr: {:?}", &relay_address_str);
             match self.observe_addr(relay_address.clone()).await {
                 Ok(_) => {
+                    info!("connected to: {}", relay_address_str);
                     connected = true;
                     break;
                 }
-                Err(_) => continue,
+                Err(_) => {
+                    info!("failed to connect to {}", relay_address_str);
+                    continue;
+                }
             }
         }
+
+        info!("addr: {:?}", &relay_address);
 
         if !connected {
             return Err(BlueError::local_err("Unable to connect to relay"));
@@ -188,6 +205,9 @@ impl Swarm {
                     info!("Relay told us our public address: {:?}", observed_addr);
                     learned_observed_addr = true;
                 }
+                SwarmEvent::OutgoingConnectionError { peer_id: _, error } => {
+                    return Err(BlueError::local_err(error));
+                }
                 event => info!("{:?}", event),
             }
 
@@ -220,11 +240,13 @@ impl Swarm {
         Ok(())
     }
 
-    async fn spawn_event_loop(
+    async fn spawn_event_loop<M>(
         &mut self,
-        remote_in: Sender<String>,
-        mut local_out: Receiver<String>,
-    ) {
+        remote_in: Sender<GameEvent<M>>,
+        mut local_out: Receiver<M>,
+    ) where
+        M: Serialize + DeserializeOwned + Clone,
+    {
         let stream = async_stream::stream! {
             while let Some(item) = local_out.recv().await {
                 yield item;
@@ -237,13 +259,11 @@ impl Swarm {
         loop {
             select! {
                 msg = stream.select_next_some() => {
-                    if let Err(e) = self.swarm
+                    let msg = rmp_serde::to_vec(&msg).unwrap();
+                    _ = self.swarm
                         .behaviour_mut()
                         .gossip
-                        .publish(IdentTopic::new("player-info"), msg.as_bytes())
-                    {
-                        //println!("Publish error: {:?}", e);
-                    }
+                        .publish(IdentTopic::new("player-info"), msg);
                 },
                 event = self.swarm.select_next_some() => match event {
                     SwarmEvent::NewListenAddr { address, .. } => {
@@ -259,16 +279,18 @@ impl Swarm {
                         info!("{:?}", event)
                     }
                     SwarmEvent::Behaviour(Event::Gossipsub(GossipsubEvent::Message {
-                        propagation_source: _peer_id,
+                        propagation_source: peer_id,
                         message_id: _id,
                         message,
                     })) => {
-                        let msg = String::from_utf8_lossy(&message.data);
-                        _ = remote_in.send(msg.to_string()).await;
+                        let msg: M = rmp_serde::from_slice(&message.data).unwrap();
+                        let msg = GameEvent::Event(peer_id.to_string(), msg.clone());
+                        _ = remote_in.send(msg.clone()).await;
                     },
                     SwarmEvent::ConnectionEstablished {
                         peer_id, endpoint, ..
                     } => {
+                        _ = remote_in.send(GameEvent::NewConnection(peer_id.to_string())).await;
                         info!("Established connection to {:?} via {:?}", peer_id, endpoint);
                     }
                     SwarmEvent::OutgoingConnectionError { peer_id, error } => {
