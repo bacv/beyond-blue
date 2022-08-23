@@ -1,5 +1,6 @@
 use common::*;
 use std::net::Ipv4Addr;
+use std::str::FromStr;
 
 use futures::{select, FutureExt, StreamExt};
 use libp2p::core::multiaddr::{Multiaddr, Protocol};
@@ -15,17 +16,18 @@ use libp2p::{core::transport, swarm::SwarmBuilder, PeerId};
 use libp2p::{identity, noise, Transport};
 use libp2p_core::muxing::StreamMuxerBox;
 use log::info;
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::Event;
 
 type BBSwarm = libp2p::swarm::Swarm<crate::Behaviour>;
 
-pub struct SwarmSvc {
+pub struct Swarm {
     swarm: BBSwarm,
 }
 
-impl SwarmSvc {
+impl Swarm {
     pub async fn new_with_default_transport(local_key: identity::Keypair) -> BlueResult<Self> {
         let local_peer_id = PeerId::from(local_key.public());
         info!("Local peer id: {:?}", local_peer_id);
@@ -64,16 +66,57 @@ impl SwarmSvc {
 
     pub async fn spawn(
         &mut self,
-        relay_address: Multiaddr,
-        peer_id: Option<PeerId>,
+        base_url: url::Url,
         tx: Sender<String>,
         rx: Receiver<String>,
     ) -> BlueResult<()> {
         self.listen().await?;
-        self.observe_addr(relay_address.clone()).await?;
+
+        let relay_info_url = base_url.join("/api/relay").map_err(BlueError::local_err)?;
+        let peers_info_url = base_url.join("/api/peers").map_err(BlueError::local_err)?;
+
+        let relay_info = reqwest::get(relay_info_url)
+            .await
+            .map_err(BlueError::local_err)?
+            .json::<WebRelayInfo>()
+            .await
+            .map_err(BlueError::local_err)?;
+
+        let peer_info = reqwest::get(peers_info_url)
+            .await
+            .map_err(BlueError::local_err)?
+            .json::<Vec<WebPeerInfo>>()
+            .await
+            .map_err(BlueError::local_err)?;
+
+        // example of multiaddr: /ip4/10.0.0.11/tcp/8842/p2p/12D3KooWKrvVmXWSLcfAB5J32TwPe4LHtFj6yYM5gamdEQFZH5ci
+        let mut relay_address = Multiaddr::from_str("").map_err(BlueError::local_err)?;
+        let mut connected = false;
+
+        for ip in relay_info.ips.iter() {
+            let relay_address_str = format!("{}/p2p/{}", ip, relay_info.peer_id);
+            relay_address =
+                Multiaddr::from_str(&relay_address_str).map_err(BlueError::local_err)?;
+
+            match self.observe_addr(relay_address.clone()).await {
+                Ok(_) => {
+                    connected = true;
+                    break;
+                }
+                Err(_) => continue,
+            }
+        }
+
+        if !connected {
+            return Err(BlueError::local_err("Unable to connect to relay"));
+        }
+
         self.listen_on_relay(relay_address.clone())?;
-        if let Some(peer_id) = peer_id {
-            self.dial(relay_address, peer_id)?;
+        for peer in peer_info.iter() {
+            _ = self.dial(
+                &relay_address,
+                PeerId::from_str(&peer.addr).map_err(BlueError::local_err)?,
+            );
         }
 
         self.spawn_event_loop(tx, rx).await;
@@ -156,10 +199,11 @@ impl SwarmSvc {
         Ok(())
     }
 
-    fn dial(&mut self, addr: Multiaddr, remote_peer_id: PeerId) -> BlueResult<()> {
+    fn dial(&mut self, addr: &Multiaddr, remote_peer_id: PeerId) -> BlueResult<()> {
         self.swarm
             .dial(
-                addr.with(Protocol::P2pCircuit)
+                addr.clone()
+                    .with(Protocol::P2pCircuit)
                     .with(Protocol::P2p(remote_peer_id.into())),
             )
             .map_err(BlueError::local_err)?;
@@ -235,4 +279,15 @@ impl SwarmSvc {
             }
         }
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct WebPeerInfo {
+    addr: String,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+pub struct WebRelayInfo {
+    peer_id: String,
+    ips: Vec<String>,
 }

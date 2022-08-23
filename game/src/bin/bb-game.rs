@@ -4,7 +4,7 @@ use bevy_rapier2d::prelude::*;
 use beyond_blue::{HeroPlugin, NpcPlugin, PIXELS_PER_METER};
 use clap::Parser;
 use common::*;
-use libp2p::{Multiaddr, PeerId};
+use libp2p::PeerId;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
@@ -13,11 +13,7 @@ use tokio::sync::mpsc;
 struct Opts {
     /// The listening address
     #[clap(long)]
-    relay_address: Multiaddr,
-
-    /// Peer ID of the remote peer to hole punch to.
-    #[clap(long)]
-    remote_peer_id: Option<PeerId>,
+    relay_address: url::Url,
 }
 
 #[tokio::main]
@@ -61,10 +57,12 @@ fn setup_network(mut commands: Commands, runtime: Res<Runtime>, opts: Res<Opts>)
         //"/ip4/145.239.92.79/tcp/8842/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN";
 
         tokio::spawn(async move {
-            peer::SwarmSvc::new_with_default_transport(id.get_key())
+            let res = peer::Swarm::new_with_default_transport(id.get_key())
                 .await?
-                .spawn(relay_address, None, remote_in, local_out)
+                .spawn(relay_address, remote_in, local_out)
                 .await;
+
+            log::info!("Game swarm result: {:?}", res);
 
             BlueResult::Ok(())
         });
