@@ -8,7 +8,7 @@ use crate::{RelayInfo, SharedStore};
 pub fn api_config(app: &mut web::ServiceConfig) {
     app.service(
         web::scope("/api")
-            .route("/peer", web::get().to(get_peer_list))
+            .route("/peers", web::get().to(get_peer_list))
             .route("/relay", web::get().to(get_relay_info)),
     );
 }
