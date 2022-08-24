@@ -1,5 +1,10 @@
 # Beyond Blue
 An experimental multiplayer game written in rust that uses libp2p for peer to peer game data syncing.
+---
+This is very early WIP
+
+https://user-images.githubusercontent.com/2364987/186432816-59ac4f73-1b62-4fce-b756-7ffafc099dec.mp4
+
 
 ## Design goals
 * *Simple*: Developer should not worry about the internal peer or relay implementation details.
