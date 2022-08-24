@@ -73,7 +73,6 @@ match remote_out.try_recv() {
 ### Relay setup
 To run relay you'll need to provide two parameters to the relay binary: 
 ```sh
-3
 $ ./bb-relay
 error: The following required arguments were not provided:
     --secret-key-seed <SECRET_KEY_SEED>
@@ -87,4 +86,9 @@ For more information try --help
 
 $ ./bb-relay --secret-key-seed 0 --swarm-port 8042 --http-port 8080
 ```
-
+## TODOs
+* Use streaming protocol to pass realtime data about gamestate.
+* Leave gossipsub only for nonrealtime data.
+* Handle reconnects.
+* Extract p2p related code to a new repository and publish a crate for that.
+* Use Kademlia algorithm to connect peers into a mesh with fewer p2p connections.
