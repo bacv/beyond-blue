@@ -50,7 +50,8 @@ impl Behaviour {
         // To content-address message, we can take the hash of message and use it as an ID.
         let message_id_fn = |message: &GossipsubMessage| {
             let mut s = DefaultHasher::new();
-            message.data.hash(&mut s);
+            let id = format!("{:?}{:?}", message.source, message.data);
+            id.hash(&mut s);
             MessageId::from(s.finish().to_string())
         };
 

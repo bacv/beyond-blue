@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
 use bevy_rapier2d::prelude::*;
-use beyond_blue::{GameState, HeroPlugin, NpcPlugin, TestGameMessage, PIXELS_PER_METER};
+use beyond_blue::{GameMessage, GameState, HeroPlugin, NpcPlugin, PIXELS_PER_METER};
 use clap::Parser;
 use common::*;
 use tokio::runtime::Runtime;
@@ -53,6 +53,10 @@ async fn main() {
 
 fn setup_physics(mut commands: Commands, mut rapier_config: ResMut<RapierConfiguration>) {
     rapier_config.gravity = Vec2::new(0., 0.);
+    rapier_config.timestep_mode = TimestepMode::Fixed {
+        dt: 1.,
+        substeps: 30,
+    };
     commands.spawn_bundle(Camera2dBundle::default());
 }
 
@@ -69,7 +73,7 @@ fn setup_network(mut commands: Commands, runtime: Res<Runtime>, opts: Res<Opts>)
         tokio::spawn(async move {
             let res = peer::Swarm::new_with_default_transport(id.get_key())
                 .await?
-                .spawn::<TestGameMessage>(relay_address, remote_in, local_out)
+                .spawn::<GameMessage>(relay_address, remote_in, local_out)
                 .await;
 
             log::info!("Game swarm result: {:?}", res);

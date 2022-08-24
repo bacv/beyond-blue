@@ -5,7 +5,7 @@ use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::{FillMode as LyonFillMode, *};
 use bevy_rapier2d::prelude::*;
 
-use crate::{state::GameState, GameMessage};
+use crate::{state::GameState, GameEvent};
 
 pub struct NpcPlugin;
 
@@ -21,18 +21,18 @@ pub struct Npc;
 pub fn handle_conn_events(
     commands: Commands,
     game_state: ResMut<GameState>,
-    from_server: Res<Arc<Mutex<mpsc::Receiver<GameMessage>>>>,
+    from_server: Res<Arc<Mutex<mpsc::Receiver<GameEvent>>>>,
     mut query: Query<&mut Transform, With<Npc>>,
 ) {
     // The operation can't be blocking inside the bevy system.
     if let Ok(msg) = from_server.lock().unwrap().try_recv() {
         match msg {
-            peer::GameEvent::NewConnection(peer_id) => {
+            peer::NetworkEvent::NewConnection(peer_id) => {
                 if game_state.npcs.get(&peer_id).is_none() {
                     spawn_npc(commands, peer_id, game_state);
                 }
             }
-            peer::GameEvent::Event(peer_id, crate::TestGameMessage::Move(x, y)) => {
+            peer::NetworkEvent::Event(peer_id, crate::GameMessage::Move(x, y)) => {
                 if let Some(entity) = game_state.npcs.get(&peer_id) {
                     if let Ok(mut transform) = query.get_mut(*entity) {
                         *transform = Transform::from_xyz(x, y, 0.0);

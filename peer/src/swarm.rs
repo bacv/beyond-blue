@@ -22,7 +22,7 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use crate::Event;
 
 #[derive(Serialize, Deserialize, Clone)]
-pub enum GameEvent<M> {
+pub enum NetworkEvent<M> {
     NewConnection(String),
     Event(String, M),
 }
@@ -36,8 +36,6 @@ pub struct Swarm {
 impl Swarm {
     pub async fn new_with_default_transport(local_key: identity::Keypair) -> BlueResult<Self> {
         let local_peer_id = PeerId::from(local_key.public());
-        info!("Local peer id: {:?}", local_peer_id);
-
         let (relay_transport, client) = Client::new_transport_and_behaviour(local_peer_id);
 
         let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
@@ -73,7 +71,7 @@ impl Swarm {
     pub async fn spawn<M>(
         &mut self,
         base_url: url::Url,
-        tx: Sender<GameEvent<M>>,
+        tx: Sender<NetworkEvent<M>>,
         rx: Receiver<M>,
     ) -> BlueResult<()>
     where
@@ -98,9 +96,7 @@ impl Swarm {
             .await
             .map_err(BlueError::local_err)?;
 
-        // example of multiaddr:
-        // /ip4/10.0.0.11/tcp/8842/p2p/12D3KooWKrvVmXWSLcfAB5J32TwPe4LHtFj6yYM5gamdEQFZH5ci
-        let mut relay_address = Multiaddr::from_str("").map_err(BlueError::local_err)?;
+        let mut relay_address = Multiaddr::empty();
         let mut connected = false;
 
         for ip in relay_info.ips.iter() {
@@ -242,7 +238,7 @@ impl Swarm {
 
     async fn spawn_event_loop<M>(
         &mut self,
-        remote_in: Sender<GameEvent<M>>,
+        remote_in: Sender<NetworkEvent<M>>,
         mut local_out: Receiver<M>,
     ) where
         M: Serialize + DeserializeOwned + Clone,
@@ -284,13 +280,13 @@ impl Swarm {
                         message,
                     })) => {
                         let msg: M = rmp_serde::from_slice(&message.data).unwrap();
-                        let msg = GameEvent::Event(peer_id.to_string(), msg.clone());
+                        let msg = NetworkEvent::Event(peer_id.to_string(), msg.clone());
                         _ = remote_in.send(msg.clone()).await;
                     },
                     SwarmEvent::ConnectionEstablished {
                         peer_id, endpoint, ..
                     } => {
-                        _ = remote_in.send(GameEvent::NewConnection(peer_id.to_string())).await;
+                        _ = remote_in.send(NetworkEvent::NewConnection(peer_id.to_string())).await;
                         info!("Established connection to {:?} via {:?}", peer_id, endpoint);
                     }
                     SwarmEvent::OutgoingConnectionError { peer_id, error } => {

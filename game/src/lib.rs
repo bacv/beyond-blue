@@ -2,7 +2,7 @@ mod hero;
 mod npc;
 mod state;
 
-use peer::GameEvent;
+use peer::NetworkEvent;
 use serde::{Deserialize, Serialize};
 
 pub use hero::*;
@@ -12,8 +12,8 @@ pub use state::*;
 pub const PIXELS_PER_METER: f32 = 492.3;
 
 #[derive(Serialize, Deserialize, Clone)]
-pub enum TestGameMessage {
+pub enum GameMessage {
     Move(f32, f32),
 }
 
-pub type GameMessage = GameEvent<TestGameMessage>;
+pub type GameEvent = NetworkEvent<GameMessage>;

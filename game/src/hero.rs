@@ -3,7 +3,7 @@ use bevy_prototype_lyon::prelude::{FillMode as LyonFillMode, *};
 use bevy_rapier2d::prelude::*;
 use tokio::sync::mpsc;
 
-use crate::TestGameMessage;
+use crate::GameMessage;
 
 pub struct HeroPlugin;
 
@@ -40,33 +40,30 @@ pub fn spawn_hero(mut commands: Commands) {
         .insert(GravityScale(0.5))
         .insert(Collider::ball(10.))
         .insert(Restitution::coefficient(0.7))
-        .insert(ExternalImpulse {
-            impulse: Vec2::new(0.1, 0.0),
-            torque_impulse: 0.0,
-        })
+        .insert(ExternalImpulse::default())
         .insert(Hero);
 }
 
 fn hero_force(
     keyboard_input: Res<Input<KeyCode>>,
-    to_server: ResMut<mpsc::Sender<TestGameMessage>>,
+    to_server: ResMut<mpsc::Sender<GameMessage>>,
     mut query: Query<(&mut ExternalImpulse, &Transform), With<Hero>>,
 ) {
     for (mut ext, transform) in query.iter_mut() {
         if keyboard_input.pressed(KeyCode::A) {
-            ext.impulse = Vec2::new(-0.003, 0.0);
+            ext.impulse = Vec2::new(-0.00003, 0.0);
         }
         if keyboard_input.pressed(KeyCode::D) {
-            ext.impulse = Vec2::new(0.003, 0.0);
+            ext.impulse = Vec2::new(0.00003, 0.0);
         }
         if keyboard_input.pressed(KeyCode::S) {
-            ext.impulse = Vec2::new(0., -0.003);
+            ext.impulse = Vec2::new(0., -0.00003);
         }
         if keyboard_input.pressed(KeyCode::W) {
-            ext.impulse = Vec2::new(0., 0.003);
+            ext.impulse = Vec2::new(0., 0.00003);
         }
 
-        _ = to_server.try_send(TestGameMessage::Move(
+        _ = to_server.try_send(GameMessage::Move(
             transform.translation.x,
             transform.translation.y,
         ));
