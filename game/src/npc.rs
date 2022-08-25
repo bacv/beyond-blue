@@ -32,10 +32,11 @@ pub fn handle_conn_events(
                     spawn_npc(commands, peer_id, game_state);
                 }
             }
-            peer::NetworkEvent::Event(peer_id, crate::GameMessage::Move(x, y)) => {
+            peer::NetworkEvent::Event(peer_id, crate::GameMessage::Move(x, y, rot)) => {
                 if let Some(entity) = game_state.npcs.get(&peer_id) {
                     if let Ok(mut transform) = query.get_mut(*entity) {
                         *transform = Transform::from_xyz(x, y, 0.0);
+                        transform.rotation = rot;
                     }
                 }
             }
@@ -64,7 +65,7 @@ pub fn spawn_npc(mut commands: Commands, peer_id: String, mut game_state: ResMut
         .insert(Sleeping::disabled())
         .insert(Ccd::enabled())
         .insert(GravityScale(0.5))
-        .insert(Collider::ball(10.))
+        .insert(Collider::ball(12.))
         .insert(Restitution::coefficient(0.7))
         .insert(ExternalImpulse::default())
         .insert(Npc);

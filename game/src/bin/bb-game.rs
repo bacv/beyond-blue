@@ -3,9 +3,10 @@ use std::sync::{Arc, Mutex};
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
 use bevy_rapier2d::prelude::*;
-use beyond_blue::{GameMessage, GameState, HeroPlugin, NpcPlugin, PIXELS_PER_METER};
+use beyond_blue::{GameMessage, GameState, HeroAction, HeroPlugin, NpcPlugin, PIXELS_PER_METER};
 use clap::Parser;
 use common::*;
+use leafwing_input_manager::prelude::*;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
@@ -32,6 +33,7 @@ async fn main() {
             ..Default::default()
         })
         .insert_resource(Msaa::default())
+        .insert_resource(GameState::default())
         .insert_resource(
             tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
@@ -43,8 +45,9 @@ async fn main() {
         .add_plugin(HeroPlugin)
         .add_plugin(NpcPlugin)
         .add_plugin(ShapePlugin)
+        .add_plugin(InputManagerPlugin::<HeroAction>::default())
         .add_startup_system(setup_physics.label("main_setup"))
-        .add_startup_system(setup_network)
+        .add_startup_system(setup_network.label("net_setup"))
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(
             PIXELS_PER_METER,
         ))
@@ -67,8 +70,6 @@ fn setup_network(mut commands: Commands, runtime: Res<Runtime>, opts: Res<Opts>)
     let relay_address = opts.relay_address.clone();
     runtime.spawn(async move {
         let id = common::Identity::from_file("nothing".into());
-        //let relay_address =
-        //"/ip4/145.239.92.79/tcp/8842/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN";
 
         tokio::spawn(async move {
             let res = peer::Swarm::new_with_default_transport(id.get_key())
@@ -84,5 +85,4 @@ fn setup_network(mut commands: Commands, runtime: Res<Runtime>, opts: Res<Opts>)
 
     commands.insert_resource(local_in);
     commands.insert_resource(Arc::new(Mutex::new(remote_out)));
-    commands.insert_resource(GameState::default());
 }
