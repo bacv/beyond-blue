@@ -1,5 +1,3 @@
-use std::mem::transmute;
-
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::{FillMode as LyonFillMode, *};
 use bevy_rapier2d::prelude::*;
@@ -90,7 +88,6 @@ pub fn hero_dampening_system(
 }
 
 fn hero_force(
-    keyboard_input: Res<Input<KeyCode>>,
     to_server: ResMut<mpsc::Sender<GameMessage>>,
     game_state: ResMut<GameState>,
     action_state_query: Query<&ActionState<HeroAction>>,
