@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::{FillMode as LyonFillMode, *};
 use bevy_rapier2d::prelude::*;
@@ -27,6 +29,7 @@ pub enum HeroAction {
 pub struct Hero {
     rotation_speed: f32,
     thrust: f32,
+    update_timer: Timer,
 }
 
 pub fn spawn_hero(mut commands: Commands, mut game_state: ResMut<GameState>) {
@@ -70,6 +73,7 @@ pub fn spawn_hero(mut commands: Commands, mut game_state: ResMut<GameState>) {
         .insert(Hero {
             rotation_speed: 3.0,
             thrust: 6.0,
+            update_timer: Timer::new(Duration::from_millis(40), true),
         });
 
     game_state.hero = Some(hero_entity_builder.id());
@@ -92,6 +96,7 @@ fn hero_force(
     game_state: ResMut<GameState>,
     action_state_query: Query<&ActionState<HeroAction>>,
     mut query: Query<(&mut ExternalImpulse, &mut Velocity, &Transform, &mut Hero)>,
+    time: Res<Time>,
 ) {
     if let Some(hero) = game_state.hero {
         if let Ok(action_state) = action_state_query.get(hero) {
@@ -115,34 +120,16 @@ fn hero_force(
                     (transform.rotation * (Vec3::Y * thrust * hero.thrust)).truncate();
             }
         }
-        if let Ok((_, _, transform, _)) = query.get_mut(hero) {
-            _ = to_server.try_send(GameMessage::Move(
-                transform.translation.x,
-                transform.translation.y,
-                transform.rotation,
-            ));
-        }
 
-        /*
-        if let Ok((mut ext, transform)) = query.get_mut(hero) {
-            if keyboard_input.pressed(KeyCode::A) {
-                ext.impulse = Vec2::new(-0.00003, 0.0);
+        if let Ok((_, _, transform, mut hero)) = query.get_mut(hero) {
+            hero.update_timer.tick(time.delta());
+            if hero.update_timer.finished() {
+                _ = to_server.try_send(GameMessage::Move(
+                    transform.translation.x,
+                    transform.translation.y,
+                    transform.rotation,
+                ));
             }
-            if keyboard_input.pressed(KeyCode::D) {
-                ext.impulse = Vec2::new(0.00003, 0.0);
-            }
-            if keyboard_input.pressed(KeyCode::S) {
-                ext.impulse = Vec2::new(0., -0.00003);
-            }
-            if keyboard_input.pressed(KeyCode::W) {
-                ext.impulse = Vec2::new(0., 0.00003);
-            }
-
-            _ = to_server.try_send(GameMessage::Move(
-                transform.translation.x,
-                transform.translation.y,
-            ));
         }
-        */
     }
 }

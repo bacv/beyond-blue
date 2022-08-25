@@ -7,7 +7,7 @@ use libp2p::core::multiaddr::{Multiaddr, Protocol};
 use libp2p::core::transport::OrTransport;
 use libp2p::core::upgrade;
 use libp2p::dns::DnsConfig;
-use libp2p::gossipsub::{GossipsubEvent, IdentTopic};
+use libp2p::gossipsub::{GossipsubEvent, IdentTopic, Topic};
 use libp2p::identify::{IdentifyEvent, IdentifyInfo};
 use libp2p::relay::v2::client::Client;
 use libp2p::swarm::SwarmEvent;
@@ -31,6 +31,7 @@ type BBSwarm = libp2p::swarm::Swarm<crate::Behaviour>;
 
 pub struct Swarm {
     swarm: BBSwarm,
+    origin: PeerId,
 }
 
 impl Swarm {
@@ -65,7 +66,10 @@ impl Swarm {
         let swarm = SwarmBuilder::new(transport, behaviour, peer_id)
             .dial_concurrency_factor(10_u8.try_into().map_err(BlueError::local_err)?)
             .build();
-        Ok(Self { swarm })
+        Ok(Self {
+            swarm,
+            origin: peer_id,
+        })
     }
 
     pub async fn spawn<M>(
@@ -255,11 +259,12 @@ impl Swarm {
         loop {
             select! {
                 msg = stream.select_next_some() => {
+                    let msg = NetworkEvent::Event(self.origin.to_string(), msg);
                     let msg = rmp_serde::to_vec(&msg).unwrap();
                     _ = self.swarm
                         .behaviour_mut()
                         .gossip
-                        .publish(IdentTopic::new("player-info"), msg);
+                        .publish(IdentTopic::new(self.origin.to_string()), msg);
                 },
                 event = self.swarm.select_next_some() => match event {
                     SwarmEvent::NewListenAddr { address, .. } => {
@@ -275,17 +280,18 @@ impl Swarm {
                         info!("{:?}", event)
                     }
                     SwarmEvent::Behaviour(Event::Gossipsub(GossipsubEvent::Message {
-                        propagation_source: peer_id,
+                        propagation_source: _peer_id,
                         message_id: _id,
                         message,
                     })) => {
-                        let msg: M = rmp_serde::from_slice(&message.data).unwrap();
-                        let msg = NetworkEvent::Event(peer_id.to_string(), msg.clone());
+                        let msg: NetworkEvent<M> = rmp_serde::from_slice(&message.data).unwrap();
                         _ = remote_in.send(msg.clone()).await;
                     },
                     SwarmEvent::ConnectionEstablished {
                         peer_id, endpoint, ..
                     } => {
+                        let topic: IdentTopic = Topic::new(peer_id.to_string());
+                        _ = self.swarm.behaviour_mut().gossip.subscribe(&topic);
                         _ = remote_in.send(NetworkEvent::NewConnection(peer_id.to_string())).await;
                         info!("Established connection to {:?} via {:?}", peer_id, endpoint);
                     }
