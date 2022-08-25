@@ -17,7 +17,7 @@ impl Behaviour {
         let peer_id = PeerId::from(key.public());
         Ok(Self {
             relay: Relay::new(peer_id, Default::default()),
-            ping: Ping::new(PingConfig::new()),
+            ping: Ping::new(PingConfig::new().with_keep_alive(true)),
             identify: Identify::new(IdentifyConfig::new("/TODO/0.0.1".to_string(), key.public())),
         })
     }

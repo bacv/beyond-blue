@@ -8,7 +8,7 @@ use libp2p::gossipsub::{
     Gossipsub, GossipsubMessage, IdentTopic, MessageAuthenticity, MessageId, Topic, ValidationMode,
 };
 use libp2p::identify::{Identify, IdentifyConfig, IdentifyEvent};
-use libp2p::ping::PingEvent;
+use libp2p::ping::{Ping, PingConfig, PingEvent};
 use libp2p::relay::v2::client::{self, Client};
 use libp2p::{dcutr, gossipsub};
 use libp2p::{identity, NetworkBehaviour};
@@ -20,6 +20,7 @@ pub struct Behaviour {
     pub identify: Identify,
     pub dcutr: dcutr::behaviour::Behaviour,
     pub gossip: gossipsub::Gossipsub,
+    pub ping: Ping,
 
     #[behaviour(ignore)]
     pub topics: HashMap<String, IdentTopic>,
@@ -39,6 +40,7 @@ impl Behaviour {
             identify: Identify::new(IdentifyConfig::new("/TODO/0.0.1".to_string(), key.public())),
             dcutr: dcutr::behaviour::Behaviour::new(),
             gossip,
+            ping: Ping::new(PingConfig::new().with_keep_alive(true)),
             topics,
         })
     }
