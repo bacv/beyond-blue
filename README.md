@@ -3,8 +3,7 @@ An experimental multiplayer game written in rust that uses libp2p for peer to pe
 ---
 This is very early WIP
 
-https://user-images.githubusercontent.com/2364987/186432816-59ac4f73-1b62-4fce-b756-7ffafc099dec.mp4
-
+https://user-images.githubusercontent.com/2364987/186654055-bf59af95-3382-4257-9d35-00fac2f3c51b.mp4
 
 ## Design goals
 * *Simple*: Developer should not worry about the internal peer or relay implementation details.
