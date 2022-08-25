@@ -1,14 +1,13 @@
-use common::{BlueError, BlueResult};
+use common::BlueResult;
 use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
 
 use libp2p::gossipsub::{
-    Gossipsub, GossipsubMessage, IdentTopic, MessageAuthenticity, MessageId, Topic, ValidationMode,
+    Gossipsub, GossipsubMessage, MessageAuthenticity, MessageId, ValidationMode,
 };
 use libp2p::identify::{Identify, IdentifyConfig, IdentifyEvent};
-use libp2p::ping::PingEvent;
+use libp2p::ping::{Ping, PingConfig, PingEvent};
 use libp2p::relay::v2::client::{self, Client};
 use libp2p::{dcutr, gossipsub};
 use libp2p::{identity, NetworkBehaviour};
@@ -20,33 +19,23 @@ pub struct Behaviour {
     pub identify: Identify,
     pub dcutr: dcutr::behaviour::Behaviour,
     pub gossip: gossipsub::Gossipsub,
-
-    #[behaviour(ignore)]
-    pub topics: HashMap<String, IdentTopic>,
+    pub ping: Ping,
 }
 
 impl Behaviour {
     pub fn new(client: Client, key: &identity::Keypair) -> BlueResult<Self> {
-        let topics = ["player-info", "player-event"]
-            .iter()
-            .map(|t| (t.to_string(), Topic::new(t.to_string())))
-            .collect::<HashMap<String, IdentTopic>>();
-
-        let gossip = Self::new_gossip_config(key, topics.clone())?;
+        let gossip = Self::new_gossip_config(key)?;
 
         Ok(Self {
             relay_client: client,
             identify: Identify::new(IdentifyConfig::new("/TODO/0.0.1".to_string(), key.public())),
             dcutr: dcutr::behaviour::Behaviour::new(),
             gossip,
-            topics,
+            ping: Ping::new(PingConfig::new().with_keep_alive(true)),
         })
     }
 
-    fn new_gossip_config(
-        key: &identity::Keypair,
-        topics: HashMap<String, IdentTopic>,
-    ) -> BlueResult<Gossipsub> {
+    fn new_gossip_config(key: &identity::Keypair) -> BlueResult<Gossipsub> {
         // To content-address message, we can take the hash of message and use it as an ID.
         let message_id_fn = |message: &GossipsubMessage| {
             let mut s = DefaultHasher::new();
@@ -64,14 +53,9 @@ impl Behaviour {
             .build()
             .expect("Valid config");
         // build a gossipsub network behaviour
-        let mut gossipsub: gossipsub::Gossipsub =
+        let gossipsub: gossipsub::Gossipsub =
             gossipsub::Gossipsub::new(MessageAuthenticity::Signed(key.clone()), gossipsub_config)
                 .expect("Correct configuration");
-
-        // subscribes to our topics
-        for (_, topic) in topics {
-            gossipsub.subscribe(&topic).map_err(BlueError::local_err)?;
-        }
 
         Ok(gossipsub)
     }
